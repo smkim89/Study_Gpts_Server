@@ -16,3 +16,5 @@ files/
 .idea/
 .cache/
 .streamlit
+#pyc File
+*.pyc
