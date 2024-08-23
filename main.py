@@ -1,43 +1,63 @@
-from fastapi import FastAPI, Request
 from typing import Any, Dict
 from fastapi import Body, FastAPI, Form, Request
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
+from dotenv import load_dotenv
+from pinecone import Pinecone
+import os
+from langchain.embeddings import OpenAIEmbeddings
+from langchain.vectorstores import Pinecone
+from langchain_pinecone import PineconeVectorStore
 
-app = FastAPI(
-    title="SAM Quote Giver",
-    description="Get a real quote said by SAM himself.",
+load_dotenv()
+
+pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
+
+embeddings = OpenAIEmbeddings()
+
+vector_store = Pinecone.from_existing_index(
+    "recipes",
+    embeddings,
 )
 
-user_token_db = {"ABCDEF": "SAM"}
 
-class Quote(BaseModel):
-    quote: str = Field(
-        description="The quote that SAM said.",
-    )
-    year: int = Field(
-        description="The year when SAM said the quote.",
-    )
+app = FastAPI(
+    title="CheftGPT. The best provider of Indian Recipes in the world.",
+    description="Give ChefGPT the name of an ingredient and it will give you multiple recipes to use that ingredient on in return.",
+    servers=[
+        {
+            "url": "https://occupations-partition-governments-analyzed.trycloudflare.com",
+        },
+    ],
+)
+
+
+class Document(BaseModel):
+    page_content: str
 
 
 @app.get(
-    "/quote",
-    summary="Returns a random quote by SAM",
-    description="Upon receiving a GET request this endpoint will return a real quiote said by SAM himself.",
-    response_description="A Quote object that contains the quote said by SAM and the date when the quote was said.",
-    response_model=Quote,
+    "/recipes",
+    summary="Returns a list of recipes.",
+    description="Upon receiving an ingredient, this endpoint will return a list of recipes that contain that ingredient.",
+    response_description="A Document object that contains the recipe and preparation instructions",
+    response_model=list[Document],
+    openapi_extra={
+        "x-openai-isConsequential": False,
+    },
 )
-def get_quote(request: Request):
-    print(request.headers)
-    return {
-        "quote": "Life is short so eat it all.",
-        "year": 1950,
-    }
+def get_recipe(ingredient: str):
+    docs = vector_store.similarity_search(ingredient)
+    return docs
+
+
+user_token_db = {"ABCDEF": "aaacccaa11231"}
 
 
 @app.get(
     "/authorize",
     response_class=HTMLResponse,
+    include_in_schema=False,
 )
 def handle_authorize(client_id: str, redirect_uri: str, state: str):
     return f"""
@@ -53,8 +73,11 @@ def handle_authorize(client_id: str, redirect_uri: str, state: str):
     """
 
 
-@app.post("/token")
+@app.post(
+    "/token",
+    include_in_schema=False,
+)
 def handle_token(code=Form(...)):
     return {
-        "access_token": user_token_db[code]
+        "access_token": user_token_db[code],
     }
